@@ -26,21 +26,26 @@ Transform children's sketch into educational stories with AI. This application a
 git clone https://github.com/KelllyChen/Sketch2Story.git
 cd Sketch2Story
 ```
-### 2. Backend Setup
-```bash
-cd backend
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
-### 3. Environment Variables
+
+### 2. Environment Variables
 Create a `.env` file in the backend directory
 ```.env
 HUGGINGFACE_HUB_TOKEN=""
 OPENAI_API_KEY=""
 ```
 
-### 4. Frontend Setup
+### 3. Backend Setup
+```bash
+cd backend
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+```bash
+pytohn app.py
+```
+
+### 4. Frontend Setup(Create another new terminal)
 ```bash
 cd sketch2story-frontend
 npm install
