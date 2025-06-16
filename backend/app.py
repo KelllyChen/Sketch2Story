@@ -8,6 +8,8 @@ import io
 import base64
 from dotenv import load_dotenv
 from openai import OpenAI
+import tempfile
+from pathlib import Path
 
 # Load environment variables
 load_dotenv()
@@ -113,16 +115,41 @@ Please write a complete, engaging children's story now:
         return f"I'd love to tell you a story about {keywords} featuring {image_description}, but I'm having trouble connecting to my storytelling service right now. Please try again!"
 
 
+def generate_audio_narration(story_text, voice="nova"):
+    """Generate audio narration using OpenAI TTS"""
+    try:
+        print("Generating audio narration...")
+        
+        # Create speech using OpenAI TTS
+        response = client.audio.speech.create(
+            model="tts-1",  
+            voice=voice,    
+            input=story_text,
+            speed=0.9       # Slightly slower for children
+        )
+        
+        # Create a temporary file to store the audio
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
+        temp_file.write(response.content)
+        temp_file.close()
+        
+        print("Audio generated successfully!")
+        return temp_file.name
+        
+    except Exception as e:
+        print(f"Error generating audio: {e}")
+        return None
+
+
 @app.route('/health', methods=['GET'])
 def health_check():
     """Simple health check endpoint"""
     api_key = os.getenv('OPENAI_API_KEY')
     return jsonify({
         "status": "healthy", 
-        "message": "Flask backend is running with new OpenAI client!",
+        "message": "Flask backend with audio narration is running!",
         "openai_configured": api_key is not None,
-        "openai_key_format": api_key.startswith('sk-') if api_key else False,
-        "openai_client": "new (>=1.0.0)"
+        "features": ["image_captioning", "story_generation", "audio_narration"]
     })
 
 @app.route('/process-image', methods=['POST'])
@@ -160,7 +187,7 @@ def process_image():
 
 @app.route('/generate-story', methods=['POST'])
 def generate_story_endpoint():
-    """Generate a story based on image caption and user keywords"""
+    """Generate a story and optionally create audio narration"""
     try:
         data = request.get_json()
         
@@ -169,7 +196,9 @@ def generate_story_endpoint():
         
         image_description = data.get('imageDescription', '')
         keywords = data.get('keywords', '')
-        story_length = data.get('storyLength', 'short')  # 'short' or 'long'
+        story_length = data.get('storyLength', 'short')
+        generate_audio = data.get('generateAudio', False)
+        voice = data.get('voice', 'nova')  # Voice selection
         
         if not image_description:
             return jsonify({"error": "Image description is required"}), 400
@@ -177,28 +206,80 @@ def generate_story_endpoint():
         if not keywords:
             return jsonify({"error": "Keywords are required"}), 400
         
-        
-        
         # Generate the story
         story = generate_story(image_description, keywords, story_length)
         
-        return jsonify({
+        if story.startswith("Error:"):
+            return jsonify({"error": story}), 500
+        
+        response_data = {
             "success": True,
             "story": story,
             "imageDescription": image_description,
             "keywords": keywords,
-            "model":"GPT-4"
-        })
+            "model": "GPT-4"
+        }
+        
+        # Generate audio if requested
+        if generate_audio:
+            audio_file_path = generate_audio_narration(story, voice)
+            if audio_file_path:
+                # Convert audio to base64 for embedding in response
+                with open(audio_file_path, 'rb') as audio_file:
+                    audio_content = audio_file.read()
+                    audio_base64 = base64.b64encode(audio_content).decode('utf-8')
+                
+                response_data.update({
+                    "audioGenerated": True,
+                    "audioData": f"data:audio/mp3;base64,{audio_base64}",
+                    "voice": voice
+                })
+                
+                # Clean up temp file
+                os.unlink(audio_file_path)
+            else:
+                response_data.update({
+                    "audioGenerated": False,
+                    "audioError": "Failed to generate audio"
+                })
+        
+        return jsonify(response_data)
         
     except Exception as e:
         print(f"Error generating story: {str(e)}")
         return jsonify({"error": f"Failed to generate story: {str(e)}"}), 500
+    
+
+@app.route('/voices', methods=['GET'])
+def get_available_voices():
+    """Get list of available TTS voices"""
+    voices = [
+        {"id": "alloy", "name": "Alloy", "description": "Neutral, balanced voice"},
+        {"id": "echo", "name": "Echo", "description": "Clear, crisp voice"},
+        {"id": "fable", "name": "Fable", "description": "Warm, storytelling voice"},
+        {"id": "onyx", "name": "Onyx", "description": "Deep, rich voice"},
+        {"id": "nova", "name": "Nova", "description": "Bright, cheerful voice (great for kids)"},
+        {"id": "shimmer", "name": "Shimmer", "description": "Gentle, soothing voice"}
+    ]
+    
+    return jsonify({
+        "success": True,
+        "voices": voices,
+        "recommended": "nova"  # Best for children's stories
+    })
 
 if __name__ == '__main__':
-    # Load model before starting server
     try:
         load_image_model()
-        print("Starting Flask server...")
+        
+        api_key = os.getenv('OPENAI_API_KEY')
+        if not api_key:
+            print("WARNING: OPENAI_API_KEY not found!")
+        else:
+            print("OpenAI API key found!")
+            print("Audio narration enabled!")
+        
+        print("Starting Flask server with audio capabilities...")
         app.run(debug=True, host='0.0.0.0', port=5000)
     except Exception as e:
         print(f"Failed to start server: {e}")

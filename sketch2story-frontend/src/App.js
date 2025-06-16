@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import './App.css';
 
 function App() {
@@ -8,22 +8,45 @@ function App() {
   const [keywords, setKeywords] = useState('');
   const [storyLength, setStoryLength] = useState('short');
   const [story, setStory] = useState('');
+  const [audioData, setAudioData] = useState(null);
+  const [selectedVoice, setSelectedVoice] = useState('nova');
+  const [generateAudio, setGenerateAudio] = useState(true);
+  const [availableVoices, setAvailableVoices] = useState([]);
   const [isProcessingImage, setIsProcessingImage] = useState(false);
   const [isGeneratingStory, setIsGeneratingStory] = useState(false);
   const [error, setError] = useState('');
-  const [currentStep, setCurrentStep] = useState(1); // 1: Upload, 2: Keywords, 3: Story
+  const [currentStep, setCurrentStep] = useState(1);
+  const [isPlaying, setIsPlaying] = useState(false);
+  
+  const audioRef = useRef(null);
+
+  // Load available voices on component mount
+  useEffect(() => {
+    fetchAvailableVoices();
+  }, []);
+
+  const fetchAvailableVoices = async () => {
+    try {
+      const response = await fetch('http://localhost:5000/voices');
+      const data = await response.json();
+      if (data.success) {
+        setAvailableVoices(data.voices);
+        setSelectedVoice(data.recommended);
+      }
+    } catch (err) {
+      console.error('Error fetching voices:', err);
+    }
+  };
 
   const handleFileSelect = (event) => {
     const file = event.target.files[0];
     
     if (file) {
-      // Validate file type
       if (!file.type.startsWith('image/')) {
         setError('Please select a valid image file');
         return;
       }
       
-      // Validate file size (max 10MB)
       if (file.size > 10 * 1024 * 1024) {
         setError('File size must be less than 10MB');
         return;
@@ -33,9 +56,9 @@ function App() {
       setSelectedFile(file);
       setCaption('');
       setStory('');
+      setAudioData(null);
       setCurrentStep(1);
       
-      // Create preview
       const reader = new FileReader();
       reader.onload = (e) => setPreview(e.target.result);
       reader.readAsDataURL(file);
@@ -61,7 +84,7 @@ function App() {
 
       if (response.ok) {
         setCaption(data.caption);
-        setCurrentStep(2); // Move to keywords step
+        setCurrentStep(2);
       } else {
         setError(data.error || 'Failed to process image');
       }
@@ -88,7 +111,9 @@ function App() {
         body: JSON.stringify({
           imageDescription: caption,
           keywords: keywords.trim(),
-          storyLength: storyLength
+          storyLength: storyLength,
+          generateAudio: generateAudio,
+          voice: selectedVoice
         }),
       });
 
@@ -96,7 +121,10 @@ function App() {
 
       if (response.ok) {
         setStory(data.story);
-        setCurrentStep(3); // Move to story result step
+        if (data.audioGenerated && data.audioData) {
+          setAudioData(data.audioData);
+        }
+        setCurrentStep(3);
       } else {
         setError(data.error || 'Failed to generate story');
       }
@@ -108,21 +136,35 @@ function App() {
     }
   };
 
+  const playAudio = () => {
+    if (audioRef.current && audioData) {
+      if (isPlaying) {
+        audioRef.current.pause();
+        setIsPlaying(false);
+      } else {
+        audioRef.current.play();
+        setIsPlaying(true);
+      }
+    }
+  };
+
   const resetApp = () => {
     setSelectedFile(null);
     setPreview('');
     setCaption('');
     setKeywords('');
     setStory('');
+    setAudioData(null);
     setError('');
     setCurrentStep(1);
+    setIsPlaying(false);
   };
 
   return (
     <div className="App">
       <header className="App-header">
         <h1>Sketch2Story</h1>
-        <p>Transform your sketches into educational stories with AI</p>
+        <p>Transform your sketches into narrated educational stories with AI</p>
       </header>
 
       <main className="main-content">
@@ -226,6 +268,40 @@ function App() {
                 </select>
               </div>
 
+              {/* Audio Options */}
+              <div className="audio-options">
+                <div className="audio-toggle">
+                  <label className="checkbox-label">
+                    <input
+                      type="checkbox"
+                      checked={generateAudio}
+                      onChange={(e) => setGenerateAudio(e.target.checked)}
+                    />
+                    <span className="checkmark"></span>
+                    Generate Audio Narration
+                  </label>
+                </div>
+
+                {generateAudio && (
+                  <div className="voice-selection">
+                    <label className="voice-label">
+                      <strong>Narrator Voice:</strong>
+                    </label>
+                    <select 
+                      value={selectedVoice} 
+                      onChange={(e) => setSelectedVoice(e.target.value)}
+                      className="voice-select"
+                    >
+                      {availableVoices.map(voice => (
+                        <option key={voice.id} value={voice.id}>
+                          {voice.name} - {voice.description}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+
               <div className="button-group">
                 <button onClick={resetApp} className="secondary-button">
                   Start Over
@@ -238,10 +314,10 @@ function App() {
                   {isGeneratingStory ? (
                     <>
                       <div className="spinner"></div>
-                      Creating Story...
+                      {generateAudio ? 'Creating Story & Audio...' : 'Creating Story...'}
                     </>
                   ) : (
-                    'Generate Story'
+                    generateAudio ? 'Generate Story & Audio' : 'Generate Story'
                   )}
                 </button>
               </div>
@@ -251,7 +327,7 @@ function App() {
           {/* Step 3: Story Result */}
           {currentStep === 3 && (
             <>
-              <h2>Your Story is Ready!</h2>
+              <h2>Your Story is Ready! 🎉</h2>
               
               {preview && (
                 <div className="preview-section">
@@ -260,7 +336,33 @@ function App() {
               )}
 
               <div className="story-result">
-                <h3>Generated Story:</h3>
+                <div className="story-header">
+                  <h3>Generated Story:</h3>
+                  {audioData && (
+                    <div className="audio-controls">
+                      <button 
+                        onClick={playAudio}
+                        className="audio-button"
+                      >
+                        {isPlaying ? (
+                          <>
+                            <span className="pause-icon">⏸️</span>
+                            Pause Narration
+                          </>
+                        ) : (
+                          <>
+                            <span className="play-icon">▶️</span>
+                            Play Narration
+                          </>
+                        )}
+                      </button>
+                      <span className="voice-indicator">
+                        Narrated by: {availableVoices.find(v => v.id === selectedVoice)?.name || selectedVoice}
+                      </span>
+                    </div>
+                  )}
+                </div>
+                
                 <div className="story-text">
                   {story}
                 </div>
@@ -268,8 +370,20 @@ function App() {
                 <div className="story-details">
                   <p><strong>Based on:</strong> {caption}</p>
                   <p><strong>Theme:</strong> {keywords}</p>
+                  {audioData && <p><strong>Audio:</strong> Available</p>}
                 </div>
               </div>
+
+              {/* Hidden audio element */}
+              {audioData && (
+                <audio 
+                  ref={audioRef}
+                  src={audioData}
+                  onEnded={() => setIsPlaying(false)}
+                  onPause={() => setIsPlaying(false)}
+                  onPlay={() => setIsPlaying(true)}
+                />
+              )}
 
               <div className="button-group">
                 <button onClick={resetApp} className="secondary-button">
@@ -295,7 +409,7 @@ function App() {
       </main>
 
       <footer>
-        <p>Built with React & Flask • AI-Powered Story Generation</p>
+        <p>Built with React & Flask • AI-Powered Story Generation & Narration</p>
       </footer>
     </div>
   );
