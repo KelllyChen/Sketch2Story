@@ -5,8 +5,12 @@ import io
 import sys
 from unittest.mock import patch, MagicMock
 from PIL import Image
+
+os.environ['OPENAI_API_KEY'] = 'sk-test-fake-key-for-testing'
+os.environ['HUGGINGFACE_HUB_TOKEN'] = 'hf_test_fake_token_for_testing'
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from backend.app import app, generate_image_caption, generate_story, generate_audio_narration
+from backend.app import app, generate_image_caption, generate_story, generate_audio_narration,extract_vocabulary_words, create_fallback_vocabulary, VOCABULARY_LEVELS
 
 class TestFlaskApp(unittest.TestCase):
     def setUp(self):
@@ -30,6 +34,19 @@ class TestFlaskApp(unittest.TestCase):
         data = json.loads(response.data)
         self.assertEqual(data['status'], 'healthy')
         self.assertIn('features', data)
+
+    def test_vocabulary_levels_endpoint(self):
+        """Test the vocabulary levels endpoint"""
+        response = self.app.get('/vocabulary-levels')
+        self.assertEqual(response.status_code, 200)
+        
+        data = json.loads(response.data)
+        self.assertTrue(data['success'])
+        self.assertIn('levels', data)
+        self.assertEqual(data['default'], 'intermediate')
+        self.assertIn('beginner', data['levels'])
+        self.assertIn('intermediate', data['levels'])
+        self.assertIn('advanced', data['levels'])
 
     def test_voice_endpoint(self):
         """Test the voices endpoint"""
@@ -155,6 +172,77 @@ class TestCoreFunctions(unittest.TestCase):
         
         self.assertEqual(result, "/tmp/test.mp3")
         mock_client.audio.speech.create.assert_called_once()
+
+    @patch('backend.app.client')
+    def test_extract_vocabulary_words_success(self, mock_client):
+        """Test vocabulary extraction success"""
+        mock_response = MagicMock()
+        mock_response.choices[0].message.content = '''[
+            {
+                "word": "adventure",
+                "definition": "an exciting journey",
+                "story_sentence": "The adventure began",
+                "example_sentence": "Going camping is an adventure"
+            }
+        ]'''
+        mock_client.chat.completions.create.return_value = mock_response
+        
+        result = extract_vocabulary_words("The adventure began with courage", "intermediate")
+        
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]['word'], 'adventure')
+
+    @patch('backend.app.client')
+    def test_extract_vocabulary_words_invalid_json(self, mock_client):
+        """Test vocabulary extraction with invalid JSON response"""
+        mock_response = MagicMock()
+        mock_response.choices[0].message.content = "Invalid JSON response"
+        mock_client.chat.completions.create.return_value = mock_response
+        
+        result = extract_vocabulary_words("A simple story", "beginner")
+        
+        # Should return fallback vocabulary
+        self.assertIsInstance(result, list)
+
+    @patch('backend.app.client')
+    def test_extract_vocabulary_words_exception(self, mock_client):
+        """Test vocabulary extraction when API throws exception"""
+        mock_client.chat.completions.create.side_effect = Exception("API Error")
+        
+        result = extract_vocabulary_words("A story with words", "advanced")
+        
+        # Should return fallback vocabulary
+        self.assertIsInstance(result, list)
+
+class TestVocabularyLevels(unittest.TestCase):
+    """Test vocabulary level functionality"""
+    
+    def test_vocabulary_levels_constants(self):
+        """Test vocabulary levels are properly defined"""
+        self.assertIn('beginner', VOCABULARY_LEVELS)
+        self.assertIn('intermediate', VOCABULARY_LEVELS)
+        self.assertIn('advanced', VOCABULARY_LEVELS)
+        
+        # Test structure of each level
+        for level_key, level_data in VOCABULARY_LEVELS.items():
+            self.assertIn('name', level_data)
+            self.assertIn('description', level_data)
+            self.assertIn('target_length', level_data)
+            self.assertIn('examples', level_data)
+
+    @patch('backend.app.client')
+    def test_story_generation_all_vocabulary_levels(self, mock_client):
+        """Test story generation with all vocabulary levels"""
+        mock_response = MagicMock()
+        mock_response.choices[0].message.content = "A story adapted to vocabulary level"
+        mock_client.chat.completions.create.return_value = mock_response
+        
+        levels = ['beginner', 'intermediate', 'advanced']
+        
+        for level in levels:
+            with patch.dict(os.environ, {'OPENAI_API_KEY': 'sk-valid-key'}):
+                result = generate_story("A cat", "friendship", "short", level)
+                self.assertEqual(result, "A story adapted to vocabulary level")
 
 
 class TestIntegration(unittest.TestCase):
