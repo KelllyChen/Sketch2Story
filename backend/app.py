@@ -1,15 +1,12 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from transformers import AutoProcessor, AutoModelForCausalLM, AutoTokenizer, AutoModelForSeq2SeqLM
+from transformers import AutoProcessor, AutoModelForCausalLM
 from PIL import Image
-import torch
 import os
-import io
 import base64
 from dotenv import load_dotenv
 from openai import OpenAI
 import tempfile
-from pathlib import Path
 
 # Load environment variables
 load_dotenv()
@@ -37,8 +34,6 @@ def load_image_model():
     image_model = AutoModelForCausalLM.from_pretrained("microsoft/git-base", token=token)
     image_processor = AutoProcessor.from_pretrained("microsoft/git-base", token=token)
     print("Image model loaded successfully!")
-
-    
 
 def generate_image_caption(image):
     """Generate caption for the uploaded image"""
