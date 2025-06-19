@@ -1,10 +1,11 @@
 # Sketch2Story
 Transform children's sketch into educational stories with AI. This application allows users upload a sketch, add keywords anout what you want to teach, and get a personalized story.
-## Update 
+## Update 3
 ### Features
 - Image Analysis: Upload sketches and get images description with Microsoft GIT
-- Story Generation: Create educational stories with GPT-4 based on the themes user input
+- Story Generation: Create educational stories with GPT-4 based on the themes user input and use words align with the levels users choose
 - Generate Audio: Generate naration of the story with OpenAI's TTS API
+- Extract Vocabulary: Extract vocabulary for the goal of learning 
 
 ### Demo
 1. Upload: Upload a sketch or drawing
@@ -12,6 +13,7 @@ Transform children's sketch into educational stories with AI. This application a
 3. Theme: Add keywords like "teaching children how to repect"
 4. Generate: Get a personalized story with GPT-4
 5. Play: Play the story with selected voice
+6. Learn: Get several vocabulary from the story with their definitions and example sentences 
 
 ### Tech Stack
 #### Frontend
@@ -55,11 +57,7 @@ npm install
 npm start
 ```
 
-## Next few steps
-- Improve UI
-- Generates 4 illustrated panels for key moments
-- Outputs an interactive storybook
-- Let users save the story
+
 
 
 
