@@ -7,7 +7,10 @@ function App() {
   const [caption, setCaption] = useState('');
   const [keywords, setKeywords] = useState('');
   const [storyLength, setStoryLength] = useState('short');
+  const [vocabularyLevel, setVocabularyLevel] = useState('intermediate');
+  const [availableVocabLevels, setAvailableVocabLevels] = useState({});
   const [story, setStory] = useState('');
+  const [vocabularyWords, setVocabularyWords] = useState([]);
   const [audioData, setAudioData] = useState(null);
   const [selectedVoice, setSelectedVoice] = useState('nova');
   const [generateAudio, setGenerateAudio] = useState(true);
@@ -17,12 +20,14 @@ function App() {
   const [error, setError] = useState('');
   const [currentStep, setCurrentStep] = useState(1);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [showVocabulary, setShowVocabulary] = useState(true);
   
   const audioRef = useRef(null);
 
-  // Load available voices on component mount
+  // Load available voices and vocabulary levels on component mount
   useEffect(() => {
     fetchAvailableVoices();
+    fetchVocabularyLevels();
   }, []);
 
   const fetchAvailableVoices = async () => {
@@ -35,6 +40,19 @@ function App() {
       }
     } catch (err) {
       console.error('Error fetching voices:', err);
+    }
+  };
+
+  const fetchVocabularyLevels = async () => {
+    try {
+      const response = await fetch('http://localhost:5000/vocabulary-levels');
+      const data = await response.json();
+      if (data.success) {
+        setAvailableVocabLevels(data.levels);
+        setVocabularyLevel(data.default);
+      }
+    } catch (err) {
+      console.error('Error fetching vocabulary levels:', err);
     }
   };
 
@@ -56,6 +74,7 @@ function App() {
       setSelectedFile(file);
       setCaption('');
       setStory('');
+      setVocabularyWords([]);
       setAudioData(null);
       setCurrentStep(1);
       
@@ -112,6 +131,7 @@ function App() {
           imageDescription: caption,
           keywords: keywords.trim(),
           storyLength: storyLength,
+          vocabularyLevel: vocabularyLevel,
           generateAudio: generateAudio,
           voice: selectedVoice
         }),
@@ -121,6 +141,7 @@ function App() {
 
       if (response.ok) {
         setStory(data.story);
+        setVocabularyWords(data.vocabularyWords || []);
         if (data.audioGenerated && data.audioData) {
           setAudioData(data.audioData);
         }
@@ -154,17 +175,19 @@ function App() {
     setCaption('');
     setKeywords('');
     setStory('');
+    setVocabularyWords([]);
     setAudioData(null);
     setError('');
     setCurrentStep(1);
     setIsPlaying(false);
+    setShowVocabulary(true);
   };
 
   return (
     <div className="App">
       <header className="App-header">
         <h1>Sketch2Story</h1>
-        <p>Transform your sketches into narrated educational stories with AI</p>
+        <p>Transform your sketches into narrated educational stories with AI vocabulary learning</p>
       </header>
 
       <main className="main-content">
@@ -221,10 +244,10 @@ function App() {
             </>
           )}
 
-          {/* Step 2: Keywords Input */}
+          {/* Step 2: Keywords and Settings Input */}
           {currentStep === 2 && (
             <>
-              <h2>Step 2: Add Your Story Theme</h2>
+              <h2>Step 2: Customize Your Educational Story</h2>
               
               {preview && (
                 <div className="preview-section">
@@ -254,6 +277,27 @@ function App() {
                 </p>
               </div>
 
+              {/* Vocabulary Level Selection */}
+              <div className="vocabulary-level-section">
+                <label className="vocabulary-level-label">
+                  <strong>Vocabulary Learning Level:</strong>
+                </label>
+                <select 
+                  value={vocabularyLevel} 
+                  onChange={(e) => setVocabularyLevel(e.target.value)}
+                  className="vocabulary-level-select"
+                >
+                  {Object.entries(availableVocabLevels).map(([key, level]) => (
+                    <option key={key} value={key}>
+                      {level.name} - {level.description}
+                    </option>
+                  ))}
+                </select>
+                <p className="vocabulary-help">
+                  Choose the difficulty level for vocabulary words that will be extracted for learning
+                </p>
+              </div>
+
               <div className="story-length-section">
                 <label className="story-length-label">
                   <strong>Story Length:</strong>
@@ -263,8 +307,8 @@ function App() {
                   onChange={(e) => setStoryLength(e.target.value)}
                   className="story-length-select"
                 >
-                  <option value="short">Short Story (1-2 paragraphs)</option>
-                  <option value="long">Longer Story (3-4 paragraphs)</option>
+                  <option value="short">Short Story (2-3 paragraphs)</option>
+                  <option value="long">Longer Story (4-5 paragraphs)</option>
                 </select>
               </div>
 
@@ -314,20 +358,20 @@ function App() {
                   {isGeneratingStory ? (
                     <>
                       <div className="spinner"></div>
-                      {generateAudio ? 'Creating Story & Audio...' : 'Creating Story...'}
+                      Creating Educational Story...
                     </>
                   ) : (
-                    generateAudio ? 'Generate Story & Audio' : 'Generate Story'
+                    'Generate Educational Story'
                   )}
                 </button>
               </div>
             </>
           )}
 
-          {/* Step 3: Story Result */}
+          {/* Step 3: Story and Vocabulary Result */}
           {currentStep === 3 && (
             <>
-              <h2>Your Story is Ready! 🎉</h2>
+              <h2>Your Educational Story is Ready! 📚✨</h2>
               
               {preview && (
                 <div className="preview-section">
@@ -335,44 +379,122 @@ function App() {
                 </div>
               )}
 
-              <div className="story-result">
-                <div className="story-header">
-                  <h3>Generated Story:</h3>
-                  {audioData && (
-                    <div className="audio-controls">
-                      <button 
-                        onClick={playAudio}
-                        className="audio-button"
-                      >
-                        {isPlaying ? (
-                          <>
-                            <span className="pause-icon">⏸️</span>
-                            Pause Narration
-                          </>
-                        ) : (
-                          <>
-                            <span className="play-icon">▶️</span>
-                            Play Narration
-                          </>
-                        )}
-                      </button>
-                      <span className="voice-indicator">
-                        Narrated by: {availableVoices.find(v => v.id === selectedVoice)?.name || selectedVoice}
-                      </span>
+              {/* Navigation tabs */}
+              <div className="content-tabs">
+                <button 
+                  className={`tab-button ${!showVocabulary ? 'active' : ''}`}
+                  onClick={() => setShowVocabulary(false)}
+                >
+                  📖 Story
+                </button>
+                <button 
+                  className={`tab-button ${showVocabulary ? 'active' : ''}`}
+                  onClick={() => setShowVocabulary(true)}
+                >
+                  🎓 Vocabulary ({vocabularyWords.length} words)
+                </button>
+              </div>
+
+              {/* Story Content */}
+              {!showVocabulary && (
+                <div className="story-result">
+                  <div className="story-header">
+                    <h3>Generated Story:</h3>
+                    {audioData && (
+                      <div className="audio-controls">
+                        <button 
+                          onClick={playAudio}
+                          className="audio-button"
+                        >
+                          {isPlaying ? (
+                            <>
+                              <span className="pause-icon">⏸️</span>
+                              Pause Narration
+                            </>
+                          ) : (
+                            <>
+                              <span className="play-icon">▶️</span>
+                              Play Narration
+                            </>
+                          )}
+                        </button>
+                        <span className="voice-indicator">
+                          Narrated by: {availableVoices.find(v => v.id === selectedVoice)?.name || selectedVoice}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div className="story-text">
+                    {story}
+                  </div>
+                  
+                  <div className="story-details">
+                    <p><strong>Based on:</strong> {caption}</p>
+                    <p><strong>Theme:</strong> {keywords}</p>
+                    <p><strong>Learning Level:</strong> {availableVocabLevels[vocabularyLevel]?.name}</p>
+                    {audioData && <p><strong>Audio:</strong> Available</p>}
+                  </div>
+                </div>
+              )}
+
+              {/* Vocabulary Learning Content */}
+              {showVocabulary && (
+                <div className="vocabulary-result">
+                  <div className="vocabulary-header">
+                    <h3>Vocabulary Learning</h3>
+                    <div className="level-badge">
+                      {availableVocabLevels[vocabularyLevel]?.name}
+                    </div>
+                  </div>
+                  
+                  <p className="vocabulary-intro">
+                    Here are some important words from your story to help expand vocabulary at the {availableVocabLevels[vocabularyLevel]?.name.toLowerCase()} level:
+                  </p>
+
+                  {vocabularyWords.length > 0 ? (
+                    <div className="vocabulary-grid">
+                      {vocabularyWords.map((vocab, index) => (
+                        <div key={index} className="vocabulary-card">
+                          <div className="word-header">
+                            <h4 className="vocabulary-word">{vocab.word}</h4>
+                            <span className="word-number">#{index + 1}</span>
+                          </div>
+                          
+                          <div className="word-definition">
+                            <strong>Definition:</strong>
+                            <p>{vocab.definition}</p>
+                          </div>
+                          
+                          <div className="word-context">
+                            <strong>In the story:</strong>
+                            <p className="context-sentence">"{vocab.story_sentence}"</p>
+                          </div>
+                          
+                          <div className="word-example">
+                            <strong>Example for kids:</strong>
+                            <p className="example-sentence">{vocab.example_sentence}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="no-vocabulary">
+                      <p>No vocabulary words were extracted from this story. Try generating a new story!</p>
                     </div>
                   )}
+
+                  <div className="vocabulary-tips">
+                    <h4>💡 Learning Tips:</h4>
+                    <ul>
+                      <li>Practice using these words in your own sentences</li>
+                      <li>Try to find these words in other books you read</li>
+                      <li>Ask an adult to help you understand any difficult words</li>
+                      <li>Create drawings or actions to help remember the meanings</li>
+                    </ul>
+                  </div>
                 </div>
-                
-                <div className="story-text">
-                  {story}
-                </div>
-                
-                <div className="story-details">
-                  <p><strong>Based on:</strong> {caption}</p>
-                  <p><strong>Theme:</strong> {keywords}</p>
-                  {audioData && <p><strong>Audio:</strong> Available</p>}
-                </div>
-              </div>
+              )}
 
               {/* Hidden audio element */}
               {audioData && (
@@ -393,7 +515,7 @@ function App() {
                   onClick={() => setCurrentStep(2)} 
                   className="secondary-button"
                 >
-                  Try Different Keywords
+                  Try Different Settings
                 </button>
               </div>
             </>
@@ -409,7 +531,7 @@ function App() {
       </main>
 
       <footer>
-        <p>Built with React & Flask • AI-Powered Story Generation & Narration</p>
+        <p>Built with React & Flask • AI-Powered Educational Story Generation with Vocabulary Learning</p>
       </footer>
     </div>
   );

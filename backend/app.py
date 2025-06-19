@@ -7,6 +7,8 @@ import base64
 from dotenv import load_dotenv
 from openai import OpenAI
 import tempfile
+import re
+import json
 
 # Load environment variables
 load_dotenv()
@@ -20,6 +22,28 @@ image_processor = None
 
 # Initialize OpenAI client
 client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+
+# Vocabulary difficulty levels
+VOCABULARY_LEVELS = {
+    "beginner": {
+        "name": "Beginner (Ages 4-6)",
+        "description": "Simple, everyday words",
+        "target_length": "1-2 syllables",
+        "examples": "happy, big, run, friend"
+    },
+    "intermediate": {
+        "name": "Intermediate (Ages 7-9)", 
+        "description": "Common academic words",
+        "target_length": "2-3 syllables",
+        "examples": "adventure, curious, important, explore"
+    },
+    "advanced": {
+        "name": "Advanced (Ages 10-12)",
+        "description": "Complex vocabulary and concepts",
+        "target_length": "3+ syllables",
+        "examples": "magnificent, courageous, responsibility, perseverance"
+    }
+}
 
 
 def load_image_model():
@@ -43,7 +67,7 @@ def generate_image_caption(image):
     caption = image_processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
     return caption
 
-def generate_story(image_description, keywords, story_length="short"):
+def generate_story(image_description, keywords, story_length="short", vocabulary_level="intermediate"):
     """Generate a story using GPT-4"""
 
     try:
@@ -57,6 +81,9 @@ def generate_story(image_description, keywords, story_length="short"):
         
         if not api_key.startswith('sk-'):
             return "Error: OpenAI API key format is incorrect. It should start with 'sk-'."
+        
+        # Get vocabulary level info
+        vocab_info = VOCABULARY_LEVELS.get(vocabulary_level, VOCABULARY_LEVELS["intermediate"])
     
         # Create a detailed prompt
         if story_length == "short":
@@ -71,14 +98,17 @@ def generate_story(image_description, keywords, story_length="short"):
 
 Image Description: {image_description}
 Story Theme/Keywords: {keywords}
+Vocabulary Level: {vocab_info['name']} - {vocab_info['description']}
 
 Requirements:
 - Make it educational and age-appropriate for children (ages 5-10)
 - Include a clear moral lesson about: {keywords}
-- Use simple, engaging language
+- Use vocabulary appropriate for {vocab_info['name']} level
+- Target word complexity: {vocab_info['target_length']}
 - Make the characters from the image description the main characters
 - Include dialogue to make it more engaging
 - End with a positive message
+- Incorporate some educational vocabulary words that children can learn
 
 Please write a complete, engaging children's story now:
 """
@@ -88,7 +118,7 @@ Please write a complete, engaging children's story now:
             messages=[
                 {
                     "role": "system", 
-                    "content": "You are a creative children's story writer who specializes in educational stories that teach important life lessons. Write engaging, age-appropriate stories that are both fun and educational."
+                    "content": f"You are a creative children's story writer who specializes in educational stories that teach important life lessons. Write engaging, age-appropriate stories for {vocab_info['name']} that are both fun and educational, using vocabulary appropriate for that age group."
                 },
                 {
                     "role": "user", 
@@ -108,6 +138,103 @@ Please write a complete, engaging children's story now:
         print(f"Error with GPT-4: {str(e)}")
         # Fallback to a simple response if GPT-4 fails
         return f"I'd love to tell you a story about {keywords} featuring {image_description}, but I'm having trouble connecting to my storytelling service right now. Please try again!"
+
+def extract_vocabulary_words(story_text, vocabulary_level="intermediate"):
+    """Extract vocabulary words from the story and create learning content"""
+    try:
+        vocab_info = VOCABULARY_LEVELS.get(vocabulary_level, VOCABULARY_LEVELS["intermediate"])
+        
+        prompt = f"""
+Analyze the following children's story and extract vocabulary words appropriate for {vocab_info['name']} level learning.
+
+Story: {story_text}
+
+Please identify 6-8 vocabulary words from the story that are:
+1. Appropriate for {vocab_info['name']} ({vocab_info['description']})
+2. Educational and useful for children to learn
+3. Not too common (avoid words like "the", "and", "is")
+4. Target complexity: {vocab_info['target_length']}
+
+For each word, provide:
+- The word
+- A simple, child-friendly definition
+- The sentence from the story where it appears
+- A fun example sentence that a child would understand
+
+Format your response as a JSON array like this:
+[
+  {{
+    "word": "example",
+    "definition": "child-friendly definition",
+    "story_sentence": "sentence from the story",
+    "example_sentence": "fun example for kids"
+  }}
+]
+"""
+
+        response = client.chat.completions.create(
+            model="gpt-4",
+            messages=[
+                {
+                    "role": "system",
+                    "content": f"You are an educational content creator specializing in vocabulary development for children at {vocab_info['name']} level. Extract vocabulary words that are educational, age-appropriate, and help expand children's language skills."
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            max_tokens=800,
+            temperature=0.3
+        )
+        
+        vocab_response = response.choices[0].message.content.strip()
+        print("Vocabulary words extracted successfully!")
+        
+        # Try to parse JSON response
+        
+        try:
+            # Clean the response in case there's extra text
+            json_start = vocab_response.find('[')
+            json_end = vocab_response.rfind(']') + 1
+            if json_start != -1 and json_end != -1:
+                json_str = vocab_response[json_start:json_end]
+                vocabulary_words = json.loads(json_str)
+                return vocabulary_words
+            else:
+                raise ValueError("No JSON array found in response")
+        except (json.JSONDecodeError, ValueError) as e:
+            print(f"Error parsing vocabulary JSON: {e}")
+            # Fallback: create a simple vocabulary list
+            return create_fallback_vocabulary(story_text, vocabulary_level)
+            
+    except Exception as e:
+        print(f"Error extracting vocabulary: {str(e)}")
+        return create_fallback_vocabulary(story_text, vocabulary_level)
+
+def create_fallback_vocabulary(story_text, vocabulary_level):
+    """Create a simple fallback vocabulary list if AI extraction fails"""
+    vocab_info = VOCABULARY_LEVELS.get(vocabulary_level, VOCABULARY_LEVELS["intermediate"])
+    
+    # Simple word extraction based on length and common educational words
+    words = re.findall(r'\b[a-zA-Z]{4,}\b', story_text)
+    
+    # Filter and create simple vocabulary
+    common_words = {'that', 'with', 'have', 'this', 'will', 'your', 'from', 'they', 'know', 'want', 'been', 'good', 'much', 'some', 'time', 'very', 'when', 'come', 'here', 'just', 'like', 'long', 'make', 'many', 'over', 'such', 'take', 'than', 'them', 'well', 'were'}
+    
+    filtered_words = [word.lower() for word in words if word.lower() not in common_words and len(word) >= 5]
+    unique_words = list(dict.fromkeys(filtered_words))[:6]  # Remove duplicates and limit to 6
+    
+    fallback_vocab = []
+    for word in unique_words:
+        fallback_vocab.append({
+            "word": word.capitalize(),
+            "definition": f"An important word from our story - look it up together!",
+            "story_sentence": f"This word appears in our story.",
+            "example_sentence": f"Can you use '{word}' in your own sentence?"
+        })
+    
+    return fallback_vocab
 
 
 def generate_audio_narration(story_text, voice="nova"):
@@ -144,7 +271,17 @@ def health_check():
         "status": "healthy", 
         "message": "Flask backend with audio narration is running!",
         "openai_configured": api_key is not None,
-        "features": ["image_captioning", "story_generation", "audio_narration"]
+        "features": ["image_captioning", "story_generation", "audio_narration", "vocabulary_learning"]
+    })
+
+
+@app.route('/vocabulary-levels', methods=['GET'])
+def get_vocabulary_levels():
+    """Get available vocabulary difficulty levels"""
+    return jsonify({
+        "success": True,
+        "levels": VOCABULARY_LEVELS,
+        "default": "intermediate"
     })
 
 @app.route('/process-image', methods=['POST'])
@@ -182,7 +319,7 @@ def process_image():
 
 @app.route('/generate-story', methods=['POST'])
 def generate_story_endpoint():
-    """Generate a story and optionally create audio narration"""
+    """Generate a story with vocabulary learning and optionally create audio narration"""
     try:
         data = request.get_json()
         
@@ -192,8 +329,9 @@ def generate_story_endpoint():
         image_description = data.get('imageDescription', '')
         keywords = data.get('keywords', '')
         story_length = data.get('storyLength', 'short')
+        vocabulary_level = data.get('vocabularyLevel', 'intermediate')
         generate_audio = data.get('generateAudio', False)
-        voice = data.get('voice', 'nova')  # Voice selection
+        voice = data.get('voice', 'nova')
         
         if not image_description:
             return jsonify({"error": "Image description is required"}), 400
@@ -201,17 +339,22 @@ def generate_story_endpoint():
         if not keywords:
             return jsonify({"error": "Keywords are required"}), 400
         
-        # Generate the story
-        story = generate_story(image_description, keywords, story_length)
+        # Generate the story with vocabulary level consideration
+        story = generate_story(image_description, keywords, story_length, vocabulary_level)
         
         if story.startswith("Error:"):
             return jsonify({"error": story}), 500
+        
+        # Extract vocabulary words from the story
+        vocabulary_words = extract_vocabulary_words(story, vocabulary_level)
         
         response_data = {
             "success": True,
             "story": story,
             "imageDescription": image_description,
             "keywords": keywords,
+            "vocabularyLevel": vocabulary_level,
+            "vocabularyWords": vocabulary_words,
             "model": "GPT-4"
         }
         
