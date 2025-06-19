@@ -141,7 +141,11 @@ bandit app.py
 - Educational Focus: Content designed to support learning objectives
 - Age-Appropriate: Vocabulary and content adapted to specified age groups
 
+### Deployment Guide
+Due the consideration of cost this project was not deployed on cloud so far
 
+### License
+This project is licensed under the MIT License
 
 
 
