@@ -273,8 +273,14 @@ if __name__ == '__main__':
         else:
             print("OpenAI API key found!")
             print("Audio narration enabled!")
+
+        # Railway provides PORT environment variable
+        port = int(os.environ.get('PORT', 5000))
+        print(f"🚀 Starting Flask server on port {port}...")
         
-        print("Starting Flask server with audio capabilities...")
-        app.run(debug=True, host='0.0.0.0', port=5000)
+        # Important: Set host to 0.0.0.0 for Railway
+        app.run(host='0.0.0.0', port=port, debug=False)
     except Exception as e:
-        print(f"Failed to start server: {e}")
+        print(f"❌ Failed to start server: {e}")
+        import traceback
+        traceback.print_exc()
