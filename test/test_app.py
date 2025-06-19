@@ -277,7 +277,9 @@ class TestIntegration(unittest.TestCase):
         # Step 2: Generate story
         story_payload = {
             'imageDescription': image_data['caption'],
-            'keywords': 'friendship, joy'
+            'keywords': 'friendship, joy',
+            'vocabularyLevel': 'intermediate',
+            'storyLength': 'short'
         }
         
         story_response = self.app.post('/generate-story',
@@ -288,6 +290,8 @@ class TestIntegration(unittest.TestCase):
         story_data = json.loads(story_response.data)
         self.assertTrue(story_data['success'])
         self.assertIn('Buddy', story_data['story'])
+        self.assertIn('vocabularyWords', story_data)
+       
 
 
 
